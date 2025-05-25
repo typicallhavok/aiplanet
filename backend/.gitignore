@@ -1,0 +1,16 @@
+# Python cache files
+/__pycache__
+
+# Python venv
+/venv
+
+# Python upload files
+uploads/*
+
+pdf_database.db
+
+.env*
+
+run.bat
+
+chat_database.db

@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: futura;
+  src: url('futura.ttf');
+}
+
+@font-face {
+  font-family: futura-bold;
+  src: url('futurabold.ttf');
+}
+
+@font-face {
+  font-family: futura-extra-bold;
+  src: url('futuraextrabold.ttf');
+}
+
+
+@theme {
+  --color-primary: #0FA958;
+  --color-primary-hover: #18b68e;
+  --color-bg-light: #ffffff;
+  --color-bg-dark: #343541;
+  --color-text-light: #374151;
+  --color-text-dark: #ececf1;
+  --color-user-bubble: #ffffff;
+  --color-ai-bubble: #f7f7f8;
+  --color-user-avatar: #10a37f;
+  --color-ai-avatar: #10a37f;
+  --color-border-light: #e5e7eb;
+  --color-border-dark: #4b5563;
+  --color-input-bg-light: #ffffff;
+  --color-input-bg-dark: #40414f;
+  --font-futura: 'futura';
+  --font-futura-b: 'futura-bold';
+  --font-futura-bb: 'futura-extra-bold';
+}
+
+html,
+body {
+  @apply bg-white;
+  /* @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+  } */
+}
