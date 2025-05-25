@@ -13,9 +13,12 @@ from misc import init_db, extract_text_from_pdf, store_pdf_data, create_thread, 
 load_dotenv()
 app = FastAPI()
 SECRET_KEY = os.getenv("SESSION_SECRET_KEY") or "secret"
+FRONTEND_URL1 = os.getenv("FRONTEND_URL") or "http://localhost:5173"
+FRONTEND_URL2 = os.getenv("FRONTEND_URL")
+FRONTEND_URL3 = os.getenv("FRONTEND_URL")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Node frontend origin
+    allow_origins=[FRONTEND_URL1, FRONTEND_URL2, FRONTEND_URL3],  # Node frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
