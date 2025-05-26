@@ -66,6 +66,8 @@ async def lifespan(app: FastAPI):
     init_db()
     yield
 
+app = FastAPI(lifespan=lifespan)
+
 # Root endpoint - handles user authentication via JWT tokens
 @app.get("/")
 async def token(request: Request):
@@ -84,7 +86,7 @@ async def token(request: Request):
         user_id = create_user()
         payload = {
             "user": user_id,
-            "exp": datetime.datetime() + timedelta(days=30)
+            "exp": datetime.now() + timedelta(days=30)
         }
         new_token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
         response = JSONResponse(content={"message": "New user created", "user_id": user_id})
