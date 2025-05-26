@@ -44,7 +44,6 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
 
     // API call to fetch all PDFs from the backend
     const fetchPdfs = () => {
-        console.log('Fetching PDFs from backend...');
         axios.get(`${BACKEND_URL}/pdfs`, { withCredentials: true })
             .then(response => {
                 if (response.status === 200 && response.data) {
