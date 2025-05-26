@@ -11,14 +11,15 @@ from dotenv import load_dotenv
 from misc import init_db, extract_text_from_pdf, store_pdf_data, create_thread, create_user
 
 load_dotenv()
+is_prod = os.environ.get("ENVIRONMENT") == "production"
 app = FastAPI()
-SECRET_KEY = os.getenv("SESSION_SECRET_KEY") or "secret"
-FRONTEND_URL1 = os.getenv("FRONTEND_URL1") or "http://localhost:5173"
-FRONTEND_URL2 = os.getenv("FRONTEND_URL2")
-FRONTEND_URL3 = os.getenv("FRONTEND_URL3")
+SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or "secret"
+FRONTEND_URL1 = os.environ.get("FRONTEND_URL1") or "http://localhost:5173"
+FRONTEND_URL2 = os.environ.get("FRONTEND_URL2")
+FRONTEND_URL3 = os.environ.get("FRONTEND_URL3")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL1, FRONTEND_URL2, FRONTEND_URL3],  # Node frontend origin
+    allow_origins=[FRONTEND_URL1, FRONTEND_URL2, FRONTEND_URL3],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,7 +48,7 @@ async def token(request: Request):
             value=new_token,
             httponly=True,
             max_age=30*24*60*60,
-            secure=False,
+            secure=is_prod,
             samesite="lax"
         )
         
