@@ -35,7 +35,10 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedPdf, setSelectedPdf] = useState<PDF | null>(null);
   const [pageLoading, setPageLoading] = useState<boolean>(true);
-
+  
+  // PDF-specific chat history storage using useRef for persistence between renders
+  const pdfChatHistory = useRef<Record<number, {messages: Message[], threadId: string | null}>>({});
+  
   // Refs for scrolling and handling request cancellation
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortController = useRef<AbortController | null>(null);
@@ -71,17 +74,45 @@ const App: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Handler for when user selects a PDF from the Navbar component
+  // Modified handler for when user selects a PDF from the Navbar component
   const handlePdfSelect = (pdf: PDF | null) => {
+    // Save current conversation if there's a selected PDF
+    if (selectedPdf && messages.length > 1) {
+      pdfChatHistory.current[selectedPdf.id] = {
+        messages: [...messages],
+        threadId: threadId
+      };
+    }
+    
     setSelectedPdf(pdf);
+    
     if (pdf) {
-      setMessages(prev => [
-        ...prev,
+      // Check if we have previous conversation for this PDF
+      const previousChat = pdfChatHistory.current[pdf.id];
+      
+      if (previousChat) {
+        // Restore previous conversation
+        setMessages(previousChat.messages);
+        setThreadId(previousChat.threadId);
+      } else {
+        // Start new conversation for this PDF
+        setMessages([
+          {
+            role: "assistant",
+            content: `PDF selected: ${pdf.filename}. How can I help you with this document?`
+          }
+        ]);
+        setThreadId(null); // Reset thread ID for new conversation
+      }
+    } else {
+      // Reset to default when no PDF is selected
+      setMessages([
         {
           role: "assistant",
-          content: `PDF changed to: ${pdf.filename}. How can I help you with this document?`
+          content: "Hello! I'm your AI assistant. Upload a PDF and ask me questions about it."
         }
       ]);
+      setThreadId(null);
     }
   };
 
@@ -164,6 +195,14 @@ const App: React.FC = () => {
       const responseThreadId = response.headers.get("X-Thread-Id");
       if (responseThreadId) {
         setThreadId(responseThreadId);
+        
+        // Also update the thread ID in our PDF history
+        if (selectedPdf) {
+          pdfChatHistory.current[selectedPdf.id] = {
+            messages: pdfChatHistory.current[selectedPdf.id]?.messages || [...messages, userMessage],
+            threadId: responseThreadId
+          };
+        }
       }
 
       // Add empty assistant message to be populated with streaming content
@@ -193,6 +232,15 @@ const App: React.FC = () => {
                 ...lastMessage,
                 content: lastMessage.content + textChunk
               };
+              
+              // Also update the message in our PDF history
+              if (selectedPdf) {
+                const currentHistory = pdfChatHistory.current[selectedPdf.id] || { messages: updatedMessages, threadId };
+                pdfChatHistory.current[selectedPdf.id] = {
+                  ...currentHistory,
+                  messages: updatedMessages
+                };
+              }
             }
 
             return updatedMessages;
