@@ -1,4 +1,3 @@
-
 # High-Level Design (HLD) and Low-Level Design (LLD) 
 
 Based on the code provided in the attachments, I can create a comprehensive design overview of the AI Planet application. This appears to be a web application that allows users to interact with PDF documents using AI capabilities.
