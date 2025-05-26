@@ -49,7 +49,7 @@ async def token(request: Request):
             httponly=True,
             max_age=30*24*60*60,
             secure=is_prod,
-            samesite="lax"
+            samesite="None"
         )
         
         return response
