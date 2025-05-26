@@ -1,5 +1,6 @@
 # AI planet
 **Full-stack application that allows users to upload PDF documents and ask questions regarding the content of these documents**
+Heres a [demo](https://drive.google.com/file/d/1gGq_EMKyZp-JlWxku7_eEDYRfKPBOGX3/view?usp=sharing)
 
 ## Data Flow
 
