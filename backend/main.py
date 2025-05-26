@@ -15,34 +15,8 @@ from contextlib import asynccontextmanager
 load_dotenv()
 # Determine if we're in production environment to set appropriate security settings
 is_prod = os.environ.get("ENVIRONMENT") == "production"
+
 app = FastAPI()
-# Get JWT secret key from environment or use default
-SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or "secret"
-# Configure frontend URLs for CORS
-FRONTEND_URL1 = os.environ.get("FRONTEND_URL1") or "http://localhost:5173"
-FRONTEND_URL2 = os.environ.get("FRONTEND_URL2")
-FRONTEND_URL3 = os.environ.get("FRONTEND_URL3")
-
-# Configure CORS allowed origins based on environment variables
-allowed_origins = []
-allowed_origins.append("http://localhost:5173")  # Default development URL
-if FRONTEND_URL1:
-    allowed_origins.append(FRONTEND_URL1)
-if FRONTEND_URL2:
-    allowed_origins.append(FRONTEND_URL2)
-if FRONTEND_URL3:
-    allowed_origins.append(FRONTEND_URL3)
-allowed_origins = list(set(allowed_origins))  # Remove duplicates
-
-# Set up CORS middleware to allow frontend to connect to this API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Initialize database on application startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,6 +41,33 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+# Get JWT secret key from environment or use default
+SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or "secret"
+# Configure frontend URLs for CORS
+FRONTEND_URL1 = os.environ.get("FRONTEND_URL1") or "http://localhost:5173"
+FRONTEND_URL2 = os.environ.get("FRONTEND_URL2")
+FRONTEND_URL3 = os.environ.get("FRONTEND_URL3")
+ 
+# Configure CORS allowed origins based on environment variables
+allowed_origins = []
+allowed_origins.append("http://localhost:5173")  # Default development URL
+if FRONTEND_URL1:
+    allowed_origins.append(FRONTEND_URL1)
+if FRONTEND_URL2:
+    allowed_origins.append(FRONTEND_URL2)
+if FRONTEND_URL3:
+    allowed_origins.append(FRONTEND_URL3)
+allowed_origins = list(set(allowed_origins))  # Remove duplicates
+
+# Set up CORS middleware to allow frontend to connect to this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Root endpoint - handles user authentication via JWT tokens
 @app.get("/")
