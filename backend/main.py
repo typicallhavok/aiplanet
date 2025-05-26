@@ -17,9 +17,30 @@ SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or "secret"
 FRONTEND_URL1 = os.environ.get("FRONTEND_URL1") or "http://localhost:5173"
 FRONTEND_URL2 = os.environ.get("FRONTEND_URL2")
 FRONTEND_URL3 = os.environ.get("FRONTEND_URL3")
+print(FRONTEND_URL1)
+
+# Fix CORS configuration
+allowed_origins = []
+
+# Add local development URL
+allowed_origins.append("http://localhost:5173")
+
+# Add any frontend URLs from environment variables
+if FRONTEND_URL1:
+    allowed_origins.append(FRONTEND_URL1)
+if FRONTEND_URL2:
+    allowed_origins.append(FRONTEND_URL2)
+if FRONTEND_URL3:
+    allowed_origins.append(FRONTEND_URL3)
+
+# Remove duplicates
+allowed_origins = list(set(allowed_origins))
+
+print(f"CORS allowed origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL1, FRONTEND_URL2, FRONTEND_URL3],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
