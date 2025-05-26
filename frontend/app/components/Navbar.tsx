@@ -2,23 +2,26 @@ import { useState, useEffect, useRef } from 'react';
 import { Logo } from '../components/logo';
 import axios from 'axios';
 
+// Backend URL from environment variables
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
 
+// Type definitions for PDF document
 interface PDF {
-  id: number;
-  filename: string;
-  file_size: number;
-  upload_date: string;
-  content_type: string;
+    id: number;
+    filename: string;
+    file_size: number;
+    upload_date: string;
+    content_type: string;
 }
 
-// Add props to accept and expose the selected PDF
+// Props for the Navbar component including callback functions for PDF selection
 interface NavbarProps {
-  onPdfSelect?: (pdf: PDF | null) => void;
-  selectedPdf: PDF | null;
+    onPdfSelect?: (pdf: PDF | null) => void;
+    selectedPdf: PDF | null;
+    setSelectedPdf?: (pdf: PDF | null) => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelectedPdf }) => {
+const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelectedPdf, setSelectedPdf }) => {
     const [isMobile, setIsMobile] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadResult, setUploadResult] = useState<{
@@ -28,47 +31,51 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
         text_preview: string;
     } | null>(null);
     const [pdfs, setPdfs] = useState<PDF[]>([]);
-    // Use external selectedPdf if provided, otherwise use internal state
+    
+    // Handle both internal and external PDF selection state
     const [internalSelectedPdf, setInternalSelectedPdf] = useState<PDF | null>(null);
     const selectedPdf = externalSelectedPdf !== undefined ? externalSelectedPdf : internalSelectedPdf;
     const [showPdfDropdown, setShowPdfDropdown] = useState(false);
 
+    // Fetch all available PDFs on component mount
     useEffect(() => {
         fetchPdfs();
     }, []);
 
+    // API call to fetch all PDFs from the backend
     const fetchPdfs = () => {
         console.log('Fetching PDFs from backend...');
         axios.get(`${BACKEND_URL}/pdfs`, { withCredentials: true })
-        .then(response => {
-            if (response.status === 200 && response.data) {
-                setPdfs(response.data.pdfs || []);
-                console.log('Fetched PDFs:', response.data);
-                
-                // Select the first PDF by default if available
-                if (response.data.pdfs && response.data.pdfs.length > 0) {
-                    const firstPdf = response.data.pdfs[0];
-                    setInternalSelectedPdf(firstPdf);
-                    if (onPdfSelect) {
-                        onPdfSelect(firstPdf);
+            .then(response => {
+                if (response.status === 200 && response.data) {
+                    setPdfs(response.data.pdfs || []);
+
+                    // Auto-select the first PDF if available
+                    if (response.data.pdfs && response.data.pdfs.length > 0) {
+                        const firstPdf = response.data.pdfs[0];
+                        setInternalSelectedPdf(firstPdf);
+                        if (onPdfSelect) {
+                            onPdfSelect(firstPdf);
+                        }
                     }
                 }
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching PDFs:', error);
-        });
+            })
+            .catch(error => {
+                console.error('Error fetching PDFs:', error);
+            });
     };
 
+    // Reference to the hidden file input element
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Trigger file selection dialog
     const handleUploadPDF = () => {
         // Trigger the hidden file input click
         fileInputRef.current?.click();
     }
 
+    // Handle PDF selection from dropdown
     const handleSelectPdf = (pdf: PDF) => {
-        // Update both internal state and notify parent component
         setInternalSelectedPdf(pdf);
         if (onPdfSelect) {
             onPdfSelect(pdf);
@@ -76,11 +83,12 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
         setShowPdfDropdown(false);
     };
 
+    // Handle file upload when a file is selected
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
-        // Check if selected file is PDF
+        // Validate file type
         if (file.type !== 'application/pdf') {
             alert('Please select a PDF file');
             return;
@@ -90,11 +98,11 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
             setIsUploading(true);
             setUploadResult(null);
 
-            // Create form data
+            // Prepare form data for file upload
             const formData = new FormData();
             formData.append('file', file);
 
-            // Send the request to the backend
+            // Send file to backend API
             const response = await axios.post(`${BACKEND_URL}/upload`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -102,10 +110,7 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                 withCredentials: true,
             });
 
-            // Handle successful upload
-            console.log('PDF uploaded successfully:', response.data);
-
-            // Store upload result
+            // Store upload result data
             setUploadResult({
                 id: response.data.id,
                 filename: response.data.filename,
@@ -113,10 +118,12 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                 text_preview: response.data.text_preview
             });
 
-            // Format file size for display
             const fileSizeFormatted = formatFileSize(response.data.file_size);
 
             alert(`PDF uploaded successfully: ${file.name} (${fileSizeFormatted})`);
+            
+            // Select the newly uploaded PDF
+            setSelectedPdf && setSelectedPdf(response.data);
             
             // Refresh the PDF list
             fetchPdfs();
@@ -127,14 +134,13 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
             alert(`Upload failed: ${errorMessage}`);
         } finally {
             setIsUploading(false);
-            // Reset file input
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
         }
     }
 
-    // Helper function to format file size
+    // Utility function to format file size in human-readable format
     const formatFileSize = (bytes: number): string => {
         if (bytes < 1024) return bytes + ' bytes';
         else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -142,28 +148,26 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
         else return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
     };
 
+    // Handle responsive design and dropdown closing
     useEffect(() => {
+        // Check if device is mobile based on window width
         const checkIfMobile = () => {
             setIsMobile(window.innerWidth < 720);
         };
 
-        // Initial check
         checkIfMobile();
-
-        // Add event listener
         window.addEventListener('resize', checkIfMobile);
 
-        // Close dropdown when clicking outside
+        // Close dropdown when clicking outside of it
         const handleClickOutside = (event: MouseEvent) => {
             const target = event.target as HTMLElement;
             if (!target.closest('.pdf-dropdown-container')) {
                 setShowPdfDropdown(false);
             }
         };
-        
+
         document.addEventListener('mousedown', handleClickOutside);
 
-        // Clean up
         return () => {
             window.removeEventListener('resize', checkIfMobile);
             document.removeEventListener('mousedown', handleClickOutside);
@@ -182,8 +186,9 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                 </div>
 
                 <div className="flex items-center space-x-3">
+                    {/* PDF selection dropdown */}
                     <div className="relative pdf-dropdown-container">
-                        <button 
+                        <button
                             onClick={() => setShowPdfDropdown(!showPdfDropdown)}
                             className="flex items-center text-primary hover:underline font-semibold"
                         >
@@ -195,8 +200,8 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
                         </button>
-                        
-                        {/* PDF dropdown */}
+
+                        {/* Dropdown menu for PDF selection */}
                         {showPdfDropdown && (
                             <div className="absolute left-0 mt-2 z-10 bg-white border rounded-md shadow-lg w-64">
                                 {pdfs.length === 0 ? (
@@ -204,8 +209,8 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                                 ) : (
                                     <ul className="py-1 max-h-60 overflow-y-auto">
                                         {pdfs.map((pdf) => (
-                                            <li 
-                                                key={pdf.id} 
+                                            <li
+                                                key={pdf.id}
                                                 className="px-4 py-2 text-sm hover:bg-gray-100 cursor-pointer flex items-center justify-between"
                                                 onClick={() => handleSelectPdf(pdf)}
                                             >
@@ -223,8 +228,8 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                             </div>
                         )}
                     </div>
-                    
-                    {/* Hidden file input */}
+
+                    {/* Hidden file input for PDF upload */}
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -232,6 +237,8 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                         accept="application/pdf"
                         className="hidden"
                     />
+                    
+                    {/* Responsive upload button - shows different UI based on device size */}
                     {isMobile ? (
                         <div className="border rounded-lg p-3">
                             <button
@@ -245,18 +252,18 @@ const Navbar: React.FC<NavbarProps> = ({ onPdfSelect, selectedPdf: externalSelec
                             </button>
                         </div>
                     ) : (
-                        <div className="border rounded-lg py-2 px-11 flex items-center w-50 justify-between font-bold">
-                            <button
-                                className="w-4 h-4 rounded-full border flex items-center justify-center shadow-sm hover:bg-gray-100"
-                                onClick={handleUploadPDF}
-                                disabled={isUploading}
+                        <button className="border rounded-lg py-2 px-11 flex items-center w-50 justify-between font-bold hover:bg-gray-100"
+                            onClick={handleUploadPDF}
+                            disabled={isUploading}>
+                            <div
+                                className="w-4 h-4 rounded-full border flex items-center justify-center shadow-sm "
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                 </svg>
-                            </button>
+                            </div>
                             {isUploading ? "Uploading..." : "Upload PDF"}
-                        </div>
+                        </button>
                     )}
                 </div>
             </div>

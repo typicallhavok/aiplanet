@@ -4,8 +4,10 @@ import axios from "axios";
 import Navbar from "../components/Navbar";
 import ReactMarkdown from "react-markdown";
 
+// Backend URL configuration from environment variables with fallback
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
+// Type definitions for PDF and message objects
 interface PDF {
   id: number;
   filename: string;
@@ -20,6 +22,7 @@ interface Message {
 }
 
 const App: React.FC = () => {
+  // State management for chat functionality
   const [inputValue, setInputValue] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -31,22 +34,46 @@ const App: React.FC = () => {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedPdf, setSelectedPdf] = useState<PDF | null>(null);
+  const [pageLoading, setPageLoading] = useState<boolean>(true);
 
+  // Refs for scrolling and handling request cancellation
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortController = useRef<AbortController | null>(null);
 
+  // Initial API connection check on component mount
   useEffect(() => {
-    //fetch userid
-    axios.get(`${BACKEND_URL}/`, { withCredentials: true })
+    const checkConnection = async () => {
+      let response = false;
+      while (!response) {
+        try {
+          const res = await axios.get(`${BACKEND_URL}/`, { withCredentials: true });
+          response = res.status === 200;
+          if (response) {
+            const health = await axios.get(`${BACKEND_URL}/health`, { withCredentials: true });
+            if (health.status == 200) {
+              setPageLoading(false);
+            } else {
+              console.error("Failed to connect, retrying...");
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          }
+        } catch (error) {
+          console.error("Connection check failed, retrying...", error);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
+    checkConnection();
   }, []);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to the latest message when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Handler for when user selects a PDF from the Navbar component
   const handlePdfSelect = (pdf: PDF | null) => {
     setSelectedPdf(pdf);
-    // Optionally add a system message indicating the PDF change
     if (pdf) {
       setMessages(prev => [
         ...prev,
@@ -58,11 +85,36 @@ const App: React.FC = () => {
     }
   };
 
+  // Handler to stop AI response generation when user clicks the stop button
+  const handleStopGeneration = () => {
+    if (abortController.current) {
+      abortController.current.abort();
+      abortController.current = null;
+    }
+
+    setIsLoading(false);
+
+    setMessages(prevMessages => {
+      const updatedMessages = [...prevMessages];
+      const lastMessageIndex = updatedMessages.length - 1;
+      const lastMessage = updatedMessages[lastMessageIndex];
+
+      if (lastMessage.role === "assistant") {
+        updatedMessages[lastMessageIndex] = {
+          ...lastMessage,
+          content: lastMessage.content + "\n\n_Generation stopped by user_"
+        };
+      }
+
+      return updatedMessages;
+    });
+  };
+
+  // Main handler for submitting user queries to the backend
   const handleSubmit = async (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
-    // Check if a PDF is selected
     if (!selectedPdf) {
       setError("Please select a PDF first");
       return;
@@ -70,27 +122,29 @@ const App: React.FC = () => {
 
     const userMessage: Message = { role: "user", content: inputValue };
 
-    // Add user message to the chat
+    // Add user message to chat history and reset input
     setMessages(prevMessages => [...prevMessages, userMessage]);
     setInputValue("");
     setIsLoading(true);
     setError(null);
 
     try {
-      // Prepare headers for the request
+      // Create abort controller for cancellation support
+      abortController.current = new AbortController();
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'Accept': 'text/event-stream' // Explicitly request SSE format
+        'Accept': 'text/event-stream'
       };
 
+      // Include thread ID if available for conversation continuity
       if (threadId) {
         headers["X-Thread-Id"] = threadId;
       }
 
-      // Create a new message array that includes the user message we just added
       const currentMessages = [...messages, userMessage];
 
-      // Get the stream response
+      // Send query to backend with streaming response
       const response = await fetch(`${BACKEND_URL}/query`, {
         method: 'POST',
         headers,
@@ -98,25 +152,25 @@ const App: React.FC = () => {
           messages: currentMessages,
           pdf_id: selectedPdf.id
         }),
-        credentials: 'include'
+        credentials: 'include',
+        signal: abortController.current.signal
       });
-      console.log("Response headers:", response);
 
       if (!response.ok) {
         throw new Error(`Server responded with ${response.status}: ${await response.text()}`);
       }
 
-      // Get thread ID from headers if it exists
+      // Capture thread ID from response headers for conversation continuity
       const responseThreadId = response.headers.get("X-Thread-Id");
       if (responseThreadId) {
         setThreadId(responseThreadId);
       }
 
-      // Create a new message for the AI response
+      // Add empty assistant message to be populated with streaming content
       const aiMessage: Message = { role: "assistant", content: "" };
       setMessages(prevMessages => [...prevMessages, aiMessage]);
 
-      // Process the streaming response
+      // Process streaming response using ReadableStream API
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
 
@@ -128,14 +182,13 @@ const App: React.FC = () => {
         if (value) {
           const textChunk = decoder.decode(value, { stream: true });
 
-          // Update the latest AI message with the new content
+          // Append each chunk to the last message
           setMessages(prevMessages => {
             const updatedMessages = [...prevMessages];
             const lastMessageIndex = updatedMessages.length - 1;
             const lastMessage = updatedMessages[lastMessageIndex];
 
             if (lastMessage.role === "assistant") {
-              // Create new message object to ensure state update triggers
               updatedMessages[lastMessageIndex] = {
                 ...lastMessage,
                 content: lastMessage.content + textChunk
@@ -147,11 +200,15 @@ const App: React.FC = () => {
         }
       }
     } catch (err) {
+      // Handle abort errors differently than other errors
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+
       console.error("Error querying the chatbot:", err);
       const errorMessage = err instanceof Error ? err.message : "An unknown error occurred";
       setError(errorMessage);
 
-      // Add error message
       setMessages(prevMessages => [
         ...prevMessages,
         {
@@ -160,25 +217,39 @@ const App: React.FC = () => {
         }
       ]);
     } finally {
-      setIsLoading(false);
+      // Reset loading state and abort controller if request completed normally
+      if (abortController.current?.signal.aborted === false) {
+        abortController.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
+  if (pageLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen flex-col">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary" />
+        <div className="text-2xl mt-20">Note: Initial connection might take some time to load</div>
+        <div className="text-2xl">Please enable third party cookies</div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Navbar component with PDF selection functionality */}
       <Navbar onPdfSelect={handlePdfSelect} selectedPdf={selectedPdf} />
 
       <div className="container mx-auto flex-grow p-4 flex flex-col">
-        {/* Chat container with fixed dimensions and scrolling */}
-        <div className="flex-grow max-w-3xl mx-auto w-full flex flex-col border border-gray-200 rounded-lg shadow-md">
-          {/* Messages area with scrolling */}
-          <div className="flex-grow overflow-y-auto p-4 max-h-[70vh]">
+        <div className="flex-grow max-w-4xl min-w-[320px] mx-auto w-full flex flex-col border border-gray-200 rounded-lg shadow-md">
+          {/* Chat message container with automatic scrolling */}
+          <div className="flex-grow overflow-y-auto p-4 lg:max-h-[79vh] sm:max-h-[70vh] md:max-h-[65vh]">
             {messages.map((message, index) => (
               <div
                 key={index}
                 className={`mb-4 p-3 rounded-lg ${message.role === "user"
-                    ? "bg-blue-100 ml-auto max-w-[80%]"
-                    : "bg-gray-100 mr-auto max-w-[80%]"
+                  ? "bg-blue-100 ml-auto max-w-[80%]"
+                  : "bg-gray-100 mr-auto max-w-[80%]"
                   }`}
               >
                 <p className="text-sm font-bold capitalize mb-1">{message.role === "ai" ? "assistant" : message.role}</p>
@@ -187,9 +258,9 @@ const App: React.FC = () => {
                 </div>
               </div>
             ))}
+            {/* Loading indicator shows while waiting for AI response */}
             {isLoading && (
               <div className="bg-gray-100 mr-auto max-w-[80%] mb-4 p-3 rounded-lg">
-                {/* <p className="text-sm font-bold mb-1">Assistant</p> */}
                 <div className="flex space-x-2">
                   <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce"></div>
                   <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
@@ -200,43 +271,61 @@ const App: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Fixed input area at the bottom */}
+          {/* Input form for user queries */}
           <div className="border-t border-gray-200 p-3">
+            {/* Error display area */}
             {error && (
-              <div className="mb-1">
+              <div className="mb-2">
                 <p className="text-red-500 text-sm">{error}</p>
               </div>
             )}
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(e as unknown as React.KeyboardEvent<HTMLInputElement>); }}>
-              <div className="relative">
+              {/* PDF selection warning */}
+              {!selectedPdf && (
+                <div className="relative flex items-center text-red-500 text-sm">
+                  Please select a PDF first
+                </div>
+              )}
+              <div className="relative flex items-center">
+                {/* User input field with conditional validation */}
                 <input
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
-                  className={`w-full border-2 border-gray-200 py-2 px-4 pr-12 rounded-lg focus:outline-none focus:border-primary ${!selectedPdf ? "bg-gray-400" : ""}`}
+                  className={`w-full border-2 border-gray-200 py-2 px-4 pr-12 rounded-lg focus:outline-none focus:border-primary ${!selectedPdf ? "bg-gray-100" : ""}`}
                   placeholder={selectedPdf ? "Ask about the PDF..." : "Select a PDF first..."}
                   disabled={isLoading || !selectedPdf}
                 />
-                {!selectedPdf && (
-                  <div className="absolute left-4 top-30 -translate-y-1/2 text-red-500 text-sm">
-                    Please select a PDF first
-                  </div>
+
+                {/* Dynamically show stop or send button based on loading state */}
+                {isLoading ? (
+                  <button
+                    type="button"
+                    onClick={handleStopGeneration}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-red-500 hover:text-red-700 focus:outline-none"
+                    aria-label="Stop generation"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+                      <path d="M6 6h12v12H6z" fill="currentColor" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    onClick={handleSubmit}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary focus:outline-none disabled:opacity-50"
+                    disabled={isLoading || !inputValue.trim() || !selectedPdf}
+                    aria-label="Send message"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+                      <g fill={inputValue.trim() && !isLoading && selectedPdf ? "#1976d2" : "#141414"} fillRule="nonzero">
+                        <path d="m3.45559904 3.48107721 3.26013002 7.74280879c.20897233.4963093.20897233 1.0559187 0 1.552228l-3.26013002 7.7428088 18.83130296-8.5189228zm-.74951511-1.43663117 20.99999997 9.49999996c.3918881.1772827.3918881.7338253 0 .911108l-20.99999997 9.5c-.41424571.1873968-.8433362-.2305504-.66690162-.6495825l3.75491137-8.9179145c.10448617-.2481546.10448617-.5279594 0-.776114l-3.75491137-8.9179145c-.17643458-.41903214.25265591-.83697933.66690162-.64958246z" />
+                        <path d="m6 12.5v-1h16.5v1z" />
+                      </g>
+                    </svg>
+                  </button>
                 )}
-                <button
-                  type="submit"
-                  onClick={handleSubmit}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary focus:outline-none disabled:opacity-50"
-                  disabled={isLoading || !inputValue.trim() || !selectedPdf}
-                  aria-label="Send message"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
-                    <g fill={inputValue.trim() && !isLoading && selectedPdf ? "#1976d2" : "#141414"} fillRule="nonzero">
-                      <path d="m3.45559904 3.48107721 3.26013002 7.74280879c.20897233.4963093.20897233 1.0559187 0 1.552228l-3.26013002 7.7428088 18.83130296-8.5189228zm-.74951511-1.43663117 20.99999997 9.49999996c.3918881.1772827.3918881.7338253 0 .911108l-20.99999997 9.5c-.41424571.1873968-.8433362-.2305504-.66690162-.6495825l3.75491137-8.9179145c.10448617-.2481546.10448617-.5279594 0-.776114l-3.75491137-8.9179145c-.17643458-.41903214.25265591-.83697933.66690162-.64958246z" />
-                      <path d="m6 12.5v-1h16.5v1z" />
-                    </g>
-                  </svg>
-                </button>
               </div>
             </form>
           </div>

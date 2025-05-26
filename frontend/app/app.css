@@ -2,17 +2,17 @@
 
 @font-face {
   font-family: futura;
-  src: url('futura.ttf');
+  src: url('/futura.ttf');
 }
 
 @font-face {
   font-family: futura-bold;
-  src: url('futurabold.ttf');
+  src: url('/futurabold.ttf');
 }
 
 @font-face {
   font-family: futura-extra-bold;
-  src: url('futuraextrabold.ttf');
+  src: url('/futuraextrabold.ttf');
 }
 
 
